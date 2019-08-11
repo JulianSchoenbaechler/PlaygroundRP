@@ -1,0 +1,10 @@
+{
+  "name": "ch.julian-s.srp.playground",
+  "description": "Playground render pipeline used for experimentation.",
+  "version": "0.1.0-preview",
+  "unity": "2019.2",
+  "displayName": "Playground RP",
+  "dependencies": {
+    "com.unity.render-pipelines.core": "6.9.1"
+  }
+}
