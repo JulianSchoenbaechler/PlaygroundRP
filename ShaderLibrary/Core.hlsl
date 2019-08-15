@@ -20,4 +20,4 @@
  */
 
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
-#include "Packages/com.render-pipelines.hellosrp/ShaderLibrary/UnityInput.hlsl"
+#include "Packages/ch.julian-s.srp.playground/ShaderLibrary/UnityInput.hlsl"
