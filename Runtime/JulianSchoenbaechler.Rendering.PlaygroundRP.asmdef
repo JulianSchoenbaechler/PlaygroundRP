@@ -1,0 +1,22 @@
+{
+    "name": "JulianSchoenbaechler.Rendering.PlaygroundRP",
+    "references": [
+        "GUID:df380645f10b7bc4b97d4f5eb6303d95"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "UNITY_2019_2_OR_NEWER"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.postprocessing",
+            "expression": "2.0.0",
+            "define": "POST_PROCESSING_STACK_2_0_0_OR_NEWER"
+        }
+    ]
+}

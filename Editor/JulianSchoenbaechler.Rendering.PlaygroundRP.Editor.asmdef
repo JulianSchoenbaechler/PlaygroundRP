@@ -1,0 +1,16 @@
+{
+    "name": "JulianSchoenbaechler.Rendering.PlaygroundRP.Editor",
+    "references": [],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "UNITY_2019_2_OR_NEWER"
+    ],
+    "versionDefines": []
+}
