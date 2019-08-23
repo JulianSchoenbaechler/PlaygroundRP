@@ -1,6 +1,8 @@
 {
     "name": "JulianSchoenbaechler.Rendering.PlaygroundRP.Editor",
-    "references": [],
+    "references": [
+        "GUID:4dea546be3855d241932120c06c15d4f"
+    ],
     "includePlatforms": [
         "Editor"
     ],

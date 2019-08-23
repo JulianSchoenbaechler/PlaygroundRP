@@ -48,9 +48,6 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
             GraphicsSettings.useScriptableRenderPipelineBatching = pipelineAsset.UseSRPBatcher;
 
-            bool enableDynamicBatching = true;
-            bool enableInstancing = true;
-
             // Camera render loop
             foreach(Camera camera in cameras)
             {
@@ -76,8 +73,8 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                 // ShaderTagId must match the "LightMode" tag inside the shader pass.
                 // If not "LightMode" tag is found the object won't render.
                 DrawingSettings opaqueDrawingSettings = new DrawingSettings(basePassId, opaqueSortingSettings);
-                opaqueDrawingSettings.enableDynamicBatching = enableDynamicBatching;
-                opaqueDrawingSettings.enableInstancing = enableInstancing;
+                opaqueDrawingSettings.enableDynamicBatching = pipelineAsset.EnableDynamicBatching;
+                opaqueDrawingSettings.enableInstancing = pipelineAsset.EnableInstancing;
                 opaqueDrawingSettings.perObjectData = PerObjectData.None;
 
                 // Helper method to setup some per-camera shader constants and camera matrices
