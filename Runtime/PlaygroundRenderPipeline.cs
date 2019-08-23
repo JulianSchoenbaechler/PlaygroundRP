@@ -7,15 +7,24 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
     {
         public const string ShaderTagName = "PlaygroundPipeline";
 
+        private const string SetRenderTargetTag = "Set RenderTarget";
+        private const string SetCameraRenderStateTag = "Clear Render State";
+        private const string ReleaseResourcesTag = "Release Resources";
+
+        private PlaygroundRenderPipelineAsset pipelineAsset;
         private ShaderTagId basePassId = new ShaderTagId("BasePass");
         private bool isStereoSupported = false;
+
+        private string cachedCameraTag;
 
         /// <summary>
         /// Initializes an instance of the <see cref="PlaygroundRenderPipeline"/> class.
         /// </summary>
         /// <param name="asset">The render pipeline asset.</param>
-        public PlaygroundRenderPipeline(PlaygroundRenderPipelineAsset asset)
+        public PlaygroundRenderPipeline(PlaygroundRenderPipelineAsset pipelineAsset)
         {
+            this.pipelineAsset = pipelineAsset;
+
             SetSupportedRenderingFeatures();
 
 #if UNITY_EDITOR
@@ -37,11 +46,20 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             FilteringSettings opaqueFilteringSettings = new FilteringSettings(RenderQueueRange.opaque);
             FilteringSettings transparentFilteringSettings = new FilteringSettings(RenderQueueRange.transparent);
 
-            bool enableDynamicBatching = false;
-            bool enableInstancing = false;
+            GraphicsSettings.useScriptableRenderPipelineBatching = pipelineAsset.UseSRPBatcher;
 
+            bool enableDynamicBatching = true;
+            bool enableInstancing = true;
+
+            // Camera render loop
             foreach(Camera camera in cameras)
             {
+#if UNITY_EDITOR
+                cachedCameraTag = camera.name;
+#else
+                cachedCameraTag = "Render Camera";
+#endif
+
 #if UNITY_EDITOR
                 if(camera.cameraType == CameraType.SceneView)
                     ScriptableRenderContext.EmitWorldGeometryForSceneView(camera);
@@ -62,19 +80,26 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                 opaqueDrawingSettings.enableInstancing = enableInstancing;
                 opaqueDrawingSettings.perObjectData = PerObjectData.None;
 
-                // Helper method to setup some per-camera shader constants and camera matrices.
+                // Helper method to setup some per-camera shader constants and camera matrices
                 context.SetupCameraProperties(camera, isStereoSupported);
 
-                // Sets active render target and clear based on camera backgroud color.
-                var cmd = CommandBufferPool.Get("Camera");
-                cmd.SetRenderTarget(BuiltinRenderTextureType.CurrentActive);
-                cmd.ClearRenderTarget(true, true, camera.backgroundColor);
-                context.ExecuteCommandBuffer(cmd);
-                CommandBufferPool.Release(cmd);
+                // Sets active render target and clear based on camera backgroud color
+                CommandBuffer cmd = CommandBufferPool.Get(cachedCameraTag);
 
-                // Render Opaque objects given the filtering and settings computed above.
-                // This functions will sort and batch objects.
+                using(new ProfilingSample(cmd, SetRenderTargetTag))
+                {
+                    cmd.SetRenderTarget(BuiltinRenderTextureType.CurrentActive);
+                    cmd.ClearRenderTarget(true, true, camera.backgroundColor);
+                    context.ExecuteCommandBuffer(cmd);
+                    cmd.Clear();
+                }
+
+                // Render Opaque objects given the filtering and settings computed above
+                // This functions will sort and batch objects
                 context.DrawRenderers(cullingResults, ref opaqueDrawingSettings, ref opaqueFilteringSettings);
+
+                // Render remaining objects that do not match the shader passes with the Unity's error shader
+                RenderingUtils.RenderObjectsWithError(context, ref cullingResults, camera, opaqueFilteringSettings, SortingCriteria.None);
 
                 // Renders skybox if required
                 if(camera.clearFlags == CameraClearFlags.Skybox && RenderSettings.skybox != null)
@@ -89,6 +114,9 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                 if(UnityEditor.Handles.ShouldRenderGizmos())
                     context.DrawGizmos(camera, GizmoSubset.PostImageEffects);
 #endif
+
+                context.ExecuteCommandBuffer(cmd);
+                CommandBufferPool.Release(cmd);
 
                 // Submit commands to GPU. Up to this point all commands have been enqueued in the context.
                 // Several submits can be done in a frame to better controls CPU/GPU workload.
@@ -126,7 +154,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                 lightmapsModes = LightmapsMode.CombinedDirectional | LightmapsMode.NonDirectional,
                 lightProbeProxyVolumes = false,
                 motionVectors = false,
-                receiveShadows = false,
+                receiveShadows = true,
                 reflectionProbes = true
             };
 
@@ -134,5 +162,4 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 #endif
         }
     }
-
 }

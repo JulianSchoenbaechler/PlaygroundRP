@@ -28,15 +28,21 @@
             #pragma exclude_renderers d3d11_9x
             #pragma target 2.0
 
+            #pragma multi_compile_instancing
+
             #pragma vertex vert
             #pragma fragment frag
 
             #include "Packages/ch.julian-s.srp.playground/ShaderLibrary/Core.hlsl"
 
             #include "Packages/ch.julian-s.srp.playground/Shaders/UnlitInput.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl"
+
             #include "Packages/ch.julian-s.srp.playground/Shaders/UnlitForwardPass.hlsl"
 
             ENDHLSL
         }
     }
+
+    Fallback "Hidden/InternalErrorShader"
 }
