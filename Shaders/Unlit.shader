@@ -30,8 +30,8 @@
 
             #pragma multi_compile_instancing
 
-            #pragma vertex vert
-            #pragma fragment frag
+            #pragma vertex UnlitPassVertexSimple
+            #pragma fragment UnlitPassFragmentSimple
 
             #include "Packages/ch.julian-s.srp.playground/ShaderLibrary/Core.hlsl"
 

@@ -16,7 +16,7 @@ struct Varyings
 };
 
 // Vertex shader
-Varyings vert(Attributes input)
+Varyings UnlitPassVertexSimple(Attributes input)
 {
     Varyings output;
 
@@ -33,8 +33,8 @@ Varyings vert(Attributes input)
     return output;
 }
 
-// Fragmentation shader
-real4 frag(Varyings input) : SV_Target
+// Fragment shader
+real4 UnlitPassFragmentSimple(Varyings input) : SV_Target
 {
     UNITY_SETUP_INSTANCE_ID(input);
 
