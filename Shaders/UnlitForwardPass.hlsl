@@ -4,7 +4,7 @@
 struct Attributes
 {
     float4 positionOS   : POSITION;
-    float2 uv           : TEXCOORD0;
+    float2 texcoord     : TEXCOORD0;
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };
 
@@ -28,7 +28,7 @@ Varyings UnlitPassVertexSimple(Attributes input)
     output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
 
     // Transforms 2D UV by scale/bias property
-    output.uv = TRANSFORM_TEX(input.uv, _BaseMap);
+    output.uv = TRANSFORM_TEX(input.texcoord, _BaseMap);
 
     return output;
 }

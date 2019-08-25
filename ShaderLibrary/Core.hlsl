@@ -18,6 +18,10 @@
  * along with this project.
  * If not, see http://www.gnu.org/licenses/.
  */
+#ifndef PLAYGROUND_CORE_INCLUDED
+#define PLAYGROUND_CORE_INCLUDED
 
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
-#include "Packages/ch.julian-s.srp.playground/ShaderLibrary/UnityInput.hlsl"
+#include "Packages/ch.julian-s.srp.playground/ShaderLibrary/Input.hlsl"
+
+#endif // PLAYGROUND_CORE_INCLUDED

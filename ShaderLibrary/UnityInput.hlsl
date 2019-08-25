@@ -18,6 +18,8 @@
  * along with this project.
  * If not, see http://www.gnu.org/licenses/.
  */
+#ifndef PLAYGROUND_UNITYINPUT_INCLUDED
+#define PLAYGROUND_UNITYINPUT_INCLUDED
 
 // Time (t = time since current level load) values from Unity
 float4 _Time; // (t/20, t, t*2, t*3)
@@ -67,6 +69,11 @@ float4x4 unity_WorldToObject;
 float4 unity_LODFade; // x is the fade value ranging within [0,1]. y is x quantized into 16 levels
 half4 unity_WorldTransformParams; // w is usually 1.0, or -1.0 for odd-negative scale transforms
 
+// Light Indices block feature
+// These are set internally by the engine upon request by RendererConfiguration
+real4 unity_LightData;
+real4 unity_LightIndices[2];
+
 half4 unity_ProbesOcclusion;
 
 // Lightmap block feature
@@ -109,17 +116,17 @@ float4x4 unity_MatrixVP;
 
 float4x4 OptimizeProjectionMatrix(float4x4 M)
 {
-    // Matrix format (x = non-constant value).
+    // Matrix format (x = non-constant value)
     // Orthographic Perspective  Combined(OR)
     // | x 0 0 x |  | x 0 x 0 |  | x 0 x x |
     // | 0 x 0 x |  | 0 x x 0 |  | 0 x x x |
     // | x x x x |  | x x x x |  | x x x x | <- oblique projection row
     // | 0 0 0 1 |  | 0 0 x 0 |  | 0 0 x x |
-    // Notice that some values are always 0.
-    // We can avoid loading and doing math with constants.
+    // Notice that some values are always 0
+    // We can avoid loading and doing math with constants
     M._21_41 = 0;
     M._12_42 = 0;
     return M;
 }
 
-#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl"
+#endif // PLAYGROUND_UNITYINPUT_INCLUDED

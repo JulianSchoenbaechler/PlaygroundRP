@@ -34,10 +34,7 @@
             #pragma fragment UnlitPassFragmentSimple
 
             #include "Packages/ch.julian-s.srp.playground/ShaderLibrary/Core.hlsl"
-
             #include "Packages/ch.julian-s.srp.playground/Shaders/UnlitInput.hlsl"
-            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl"
-
             #include "Packages/ch.julian-s.srp.playground/Shaders/UnlitForwardPass.hlsl"
 
             ENDHLSL
