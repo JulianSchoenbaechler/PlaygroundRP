@@ -34,6 +34,8 @@
             #pragma fragment LitPassFragmentSimple
 
             #include "Packages/ch.julian-s.srp.playground/ShaderLibrary/Core.hlsl"
+            #include "Packages/ch.julian-s.srp.playground/ShaderLibrary/Lighting.hlsl"
+
             #include "Packages/ch.julian-s.srp.playground/Shaders/SimpleLitInput.hlsl"
             #include "Packages/ch.julian-s.srp.playground/Shaders/SimpleLitForwardPass.hlsl"
 

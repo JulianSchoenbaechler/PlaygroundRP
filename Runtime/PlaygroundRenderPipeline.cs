@@ -1,3 +1,4 @@
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -11,9 +12,17 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         private const string SetCameraRenderStateTag = "Clear Render State";
         private const string ReleaseResourcesTag = "Release Resources";
 
+        private const int MaxVisibleLights = 32;
+
+        private static int visibleLightColorsId = Shader.PropertyToID("_VisibleLightColors");
+        private static int visibleLightDirectionsId = Shader.PropertyToID("_VisibleLightDirections");
+
         private PlaygroundRenderPipelineAsset pipelineAsset;
         private ShaderTagId basePassId = new ShaderTagId("BasePass");
         private bool isStereoSupported = false;
+
+        private Vector4[] visibleLightColors = new Vector4[MaxVisibleLights];
+        private Vector4[] visibleLightDirections = new Vector4[MaxVisibleLights];
 
         private string cachedCameraTag;
 
@@ -33,6 +42,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
             RenderingUtils.ClearSystemInfoCache();
 
+            GraphicsSettings.lightsUseLinearIntensity = false;
             Shader.globalRenderPipeline = ShaderTagName;
         }
 
@@ -67,36 +77,49 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                 camera.TryGetCullingParameters(isStereoSupported, out var cullingParameters);
                 var cullingResults = context.Cull(ref cullingParameters);
 
-                SortingSettings opaqueSortingSettings = new SortingSettings(camera);
-                opaqueSortingSettings.criteria = SortingCriteria.CommonOpaque;
-
-                // ShaderTagId must match the "LightMode" tag inside the shader pass.
-                // If not "LightMode" tag is found the object won't render.
-                DrawingSettings opaqueDrawingSettings = new DrawingSettings(basePassId, opaqueSortingSettings);
-                opaqueDrawingSettings.enableDynamicBatching = pipelineAsset.EnableDynamicBatching;
-                opaqueDrawingSettings.enableInstancing = pipelineAsset.EnableInstancing;
-                opaqueDrawingSettings.perObjectData = PerObjectData.None;
-
                 // Helper method to setup some per-camera shader constants and camera matrices
                 context.SetupCameraProperties(camera, isStereoSupported);
 
-                // Sets active render target and clear based on camera backgroud color
+                // Configure lighting
+                ConfigureLights(ref cullingResults);
+
                 CommandBuffer cmd = CommandBufferPool.Get(cachedCameraTag);
 
-                using(new ProfilingSample(cmd, SetRenderTargetTag))
+                using(new ProfilingSample(cmd, cachedCameraTag))
                 {
-                    cmd.SetRenderTarget(BuiltinRenderTextureType.CurrentActive);
-                    cmd.ClearRenderTarget(true, true, camera.backgroundColor);
+                    // Setup visible lights
+                    SetupLightConstants(context);
+
+                    SortingSettings opaqueSortingSettings = new SortingSettings(camera);
+                    opaqueSortingSettings.criteria = SortingCriteria.CommonOpaque;
+
+                    // ShaderTagId must match the "LightMode" tag inside the shader pass.
+                    // If not "LightMode" tag is found the object won't render.
+                    DrawingSettings opaqueDrawingSettings = new DrawingSettings(basePassId, opaqueSortingSettings);
+                    opaqueDrawingSettings.enableDynamicBatching = pipelineAsset.EnableDynamicBatching;
+                    opaqueDrawingSettings.enableInstancing = pipelineAsset.EnableInstancing;
+                    opaqueDrawingSettings.perObjectData = PerObjectData.None;
+
                     context.ExecuteCommandBuffer(cmd);
                     cmd.Clear();
+
+                    // Get new command buffer from pool for Profiling distinction
+                    CommandBuffer cmdSetup = CommandBufferPool.Get(SetRenderTargetTag);
+
+                    // Sets active render target and clear based on camera backgroud color
+                    cmdSetup.SetRenderTarget(BuiltinRenderTextureType.CurrentActive);
+                    cmdSetup.ClearRenderTarget(true, true, camera.backgroundColor);
+
+                    context.ExecuteCommandBuffer(cmdSetup);
+                    CommandBufferPool.Release(cmdSetup);
+
+                    // Render Opaque objects given the filtering and settings computed above
+                    // This functions will sort and batch objects
+                    context.DrawRenderers(cullingResults, ref opaqueDrawingSettings, ref opaqueFilteringSettings);
+
+                    // Render remaining objects that do not match the shader passes with the Unity's error shader
+                    RenderingUtils.RenderObjectsWithError(context, ref cullingResults, camera, opaqueFilteringSettings, SortingCriteria.None);
                 }
-
-                // Render Opaque objects given the filtering and settings computed above
-                // This functions will sort and batch objects
-                context.DrawRenderers(cullingResults, ref opaqueDrawingSettings, ref opaqueFilteringSettings);
-
-                // Render remaining objects that do not match the shader passes with the Unity's error shader
-                RenderingUtils.RenderObjectsWithError(context, ref cullingResults, camera, opaqueFilteringSettings, SortingCriteria.None);
 
                 // Renders skybox if required
                 if(camera.clearFlags == CameraClearFlags.Skybox && RenderSettings.skybox != null)
@@ -157,6 +180,51 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
             SceneViewDrawMode.SetupDrawMode();
 #endif
+        }
+
+        private void SetupLightConstants(ScriptableRenderContext context)
+        {
+            CommandBuffer cmd = CommandBufferPool.Get("Setup Light Constants");
+
+            cmd.SetGlobalVectorArray(visibleLightColorsId, visibleLightColors);
+            cmd.SetGlobalVectorArray(visibleLightDirectionsId, visibleLightDirections);
+
+            context.ExecuteCommandBuffer(cmd);
+            CommandBufferPool.Release(cmd);
+        }
+
+        private void ConfigureLights(ref CullingResults cullingResults)
+        {
+            var visibleLights = cullingResults.visibleLights;
+            int count = Mathf.Min(visibleLights.Length, MaxVisibleLights);
+            int i = 0;
+
+            for(; i < count; i++)
+            {
+                VisibleLight light = visibleLights[i];
+
+                if(light.lightType == LightType.Directional)
+                {
+                    Vector4 dir = light.localToWorldMatrix.GetColumn(2);
+
+                    // Negate for inverting direction
+                    dir.x = -dir.x;
+                    dir.y = -dir.y;
+                    dir.z = -dir.z;
+
+                    visibleLightDirections[i] = dir;
+                }
+                else
+                {
+                    visibleLightDirections[i] = light.localToWorldMatrix.GetColumn(3);
+                }
+
+                visibleLightColors[i] = light.finalColor;
+            }
+
+            // Clear unused lights
+            for(; i < MaxVisibleLights; i++)
+                visibleLightColors[i] = Color.clear;
         }
     }
 }

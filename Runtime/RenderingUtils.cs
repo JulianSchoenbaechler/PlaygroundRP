@@ -50,7 +50,16 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         /// Gets the Unity error material.
         /// </summary>
         /// <value>The Unity editor error material.</value>
-        private static Material ErrorMaterial => errorMaterial ?? new Material(Shader.Find("Hidden/InternalErrorShader"));
+        private static Material ErrorMaterial
+        {
+            get
+            {
+                if(errorMaterial == null)
+                    errorMaterial = new Material(Shader.Find("Hidden/InternalErrorShader"));
+
+                return errorMaterial;
+            }
+        }
 
         [Conditional("DEVELOPMENT_BUILD"), Conditional("UNITY_EDITOR")]
         internal static void RenderObjectsWithError(ScriptableRenderContext context, ref CullingResults cullResults, Camera camera, FilteringSettings filterSettings, SortingCriteria sortFlags)
