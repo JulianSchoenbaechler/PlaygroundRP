@@ -19,6 +19,49 @@ struct Varyings
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };
 
+////////////////////////////////////////////////////////////////////////////////
+// Input data
+
+void InitializeInputData(Varyings input/* , half3 normalTS */, out InputData inputData)
+{
+    inputData.positionWS = input.posWS;
+
+#ifdef _NORMALMAP
+    /* half3 viewDirWS = half3(input.normal.w, input.tangent.w, input.bitangent.w);
+    inputData.normalWS = TransformTangentToWorld(
+        normalTS,
+        half3x3(input.tangent.xyz, input.bitangent.xyz, input.normal.xyz)
+    ); */
+#else
+    half3 viewDirWS = input.viewDir;
+    inputData.normalWS = input.normal;
+#endif
+
+    //inputData.normalWS = normalize(inputData.normalWS);   // Beautifuller but not necessary
+    viewDirWS = SafeNormalize(viewDirWS);
+
+    inputData.viewDirectionWS = viewDirWS;
+
+/* #if defined(_LIGHT_SHADOWS) && !defined(_RECEIVE_SHADOWS_OFF)
+    inputData.shadowCoord = input.shadowCoord;
+#else
+    inputData.shadowCoord = float4(0, 0, 0, 0);
+#endif */
+
+    //inputData.fogCoord = input.fogFactorAndVertexLight.x;
+    //inputData.vertexLighting = input.fogFactorAndVertexLight.yzw;
+    //inputData.bakedGI = SAMPLE_GI(input.lightmapUV, input.vertexSH, inputData.normalWS);
+
+    inputData.shadowCoord = 0;
+    inputData.fogCoord = 0;
+    inputData.vertexLighting = 0;
+    inputData.bakedGI = 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Vertex and Fragment programs
+
+
 // Vertex shader
 Varyings LitPassVertexSimple(Attributes input)
 {
@@ -48,22 +91,11 @@ real4 LitPassFragmentSimple(Varyings input) : SV_Target
     UNITY_SETUP_INSTANCE_ID(input);
     input.normal = normalize(input.normal);
 
-    //return SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv) * _BaseColor;
+    InputData inputData;
+    InitializeInputData(input, inputData);
 
     // Basic Blinn-Phong
-    half3 diffuseLight = 0;
-
-    for(uint i = 0; i < 4; i++)
-    {
-        diffuseLight += LightingLambert(
-            _VisibleLightColors[i].rgb,
-            _VisibleLightDirections[i],
-            TransformObjectToWorldNormal(input.normal),
-            input.posWS
-        );
-    }
-
-    return half4(diffuseLight, 1) * _BaseColor;
+    return FragmentDiffuse(inputData, _BaseColor);;
 }
 
 #endif // PLAYGROUND_SIMPLELIT_PASS_INCLUDED

@@ -8,6 +8,17 @@
 // Some mobile GPUs have small SP cache for constants
 // Using more than 32 might cause spilling to main memory
 
+struct InputData
+{
+    float3  positionWS;
+    half3   normalWS;
+    half3   viewDirectionWS;
+    float4  shadowCoord;
+    half    fogCoord;
+    half3   vertexLighting;
+    half3   bakedGI;
+};
+
 CBUFFER_START(_LightBuffer)
     float4 _VisibleLightColors[MAX_VISIBLE_LIGHTS];
     float4 _VisibleLightDirections[MAX_VISIBLE_LIGHTS];
