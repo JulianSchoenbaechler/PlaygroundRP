@@ -37,7 +37,7 @@ void InitializeInputData(Varyings input/* , half3 normalTS */, out InputData inp
     inputData.normalWS = input.normal;
 #endif
 
-    //inputData.normalWS = normalize(inputData.normalWS);   // Beautifuller but not necessary
+    //inputData.normalWS = normalize(inputData.normalWS);   // More accuracy
     viewDirWS = SafeNormalize(viewDirWS);
 
     inputData.viewDirectionWS = viewDirWS;
@@ -80,7 +80,7 @@ Varyings LitPassVertexSimple(Attributes input)
     output.uv = TRANSFORM_TEX(input.texcoord, _BaseMap);
     output.viewDir = _WorldSpaceCameraPos - posWS;
     output.posWS = posWS;
-    output.normal = input.normalOS;
+    output.normal = TransformObjectToWorldNormal(input.normalOS);
 
     return output;
 }
@@ -89,13 +89,12 @@ Varyings LitPassVertexSimple(Attributes input)
 real4 LitPassFragmentSimple(Varyings input) : SV_Target
 {
     UNITY_SETUP_INSTANCE_ID(input);
-    input.normal = normalize(input.normal);
 
     InputData inputData;
     InitializeInputData(input, inputData);
 
     // Basic Blinn-Phong
-    return FragmentDiffuse(inputData, _BaseColor);;
+    return FragmentDiffuse(inputData, _BaseColor.rgb);
 }
 
 #endif // PLAYGROUND_SIMPLELIT_PASS_INCLUDED

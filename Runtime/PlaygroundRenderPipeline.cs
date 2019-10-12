@@ -14,6 +14,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
         private const int MaxVisibleLights = 32;
 
+        private static int visibleLightsCount = Shader.PropertyToID("_VisibleLightsCount");
         private static int visibleLightColorsId = Shader.PropertyToID("_VisibleLightColors");
         private static int visibleLightDirectionsId = Shader.PropertyToID("_VisibleLightDirections");
 
@@ -25,6 +26,32 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         private Vector4[] visibleLightDirections = new Vector4[MaxVisibleLights];
 
         private string cachedCameraTag;
+
+        /// <summary>
+        /// Gets the maximum shadow bias that can be applied.
+        /// </summary>
+        /// <value>Maximum shadow bias.</value>
+        public static float MaxShadowBias => 10f;
+
+        /// <summary>
+        /// Gets the minimum render scale that can be applied.
+        /// </summary>
+        /// <value>Minimum render scale factor.</value>
+        public static float MinRenderScale => 0.1f;
+
+        /// <summary>
+        /// Gets the maximum render scale that can be applied.
+        /// </summary>
+        /// <value>Maximum render scale factor.</value>
+        public static float MaxRenderScale => 2.0f;
+
+        /// <summary>
+        /// Gets the amount of lights that can be shaded per object (in the for loop in the shader).
+        /// No support to bitfield mask and int[] on gles2. Can't index fast more than 4 lights.
+        /// Check Lighting.hlsl for more details.
+        /// </summary>
+        /// <value>Maximum per object lights.</value>
+        public static int MaxPerObjectLights => (SystemInfo.graphicsDeviceType == GraphicsDeviceType.OpenGLES2) ? 4 : 8;
 
         /// <summary>
         /// Initializes an instance of the <see cref="PlaygroundRenderPipeline"/> class.
@@ -56,6 +83,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             FilteringSettings opaqueFilteringSettings = new FilteringSettings(RenderQueueRange.opaque);
             FilteringSettings transparentFilteringSettings = new FilteringSettings(RenderQueueRange.transparent);
 
+            int lightsPerObjectLimit = pipelineAsset.LightsPerObjectLimit;
             GraphicsSettings.useScriptableRenderPipelineBatching = pipelineAsset.UseSRPBatcher;
 
             // Camera render loop
@@ -88,7 +116,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                 using(new ProfilingSample(cmd, cachedCameraTag))
                 {
                     // Setup visible lights
-                    SetupLightConstants(context);
+                    SetupLightConstants(context, lightsPerObjectLimit);
 
                     SortingSettings opaqueSortingSettings = new SortingSettings(camera);
                     opaqueSortingSettings.criteria = SortingCriteria.CommonOpaque;
@@ -98,7 +126,8 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                     DrawingSettings opaqueDrawingSettings = new DrawingSettings(basePassId, opaqueSortingSettings);
                     opaqueDrawingSettings.enableDynamicBatching = pipelineAsset.EnableDynamicBatching;
                     opaqueDrawingSettings.enableInstancing = pipelineAsset.EnableInstancing;
-                    opaqueDrawingSettings.perObjectData = PerObjectData.None;
+                    opaqueDrawingSettings.perObjectData = PerObjectData.LightData | PerObjectData.LightIndices;
+
 
                     context.ExecuteCommandBuffer(cmd);
                     cmd.Clear();
@@ -182,10 +211,11 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 #endif
         }
 
-        private void SetupLightConstants(ScriptableRenderContext context)
+        private void SetupLightConstants(ScriptableRenderContext context, int lightsPerObjectLimit)
         {
             CommandBuffer cmd = CommandBufferPool.Get("Setup Light Constants");
 
+            cmd.SetGlobalVector(visibleLightsCount, new Vector4(Mathf.Min(MaxVisibleLights, lightsPerObjectLimit), 0.0f, 0.0f, 0.0f));
             cmd.SetGlobalVectorArray(visibleLightColorsId, visibleLightColors);
             cmd.SetGlobalVectorArray(visibleLightDirectionsId, visibleLightDirections);
 

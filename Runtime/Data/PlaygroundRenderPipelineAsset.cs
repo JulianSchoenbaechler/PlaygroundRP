@@ -11,10 +11,12 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         [SerializeField] private bool enableInstancing = true;
         [SerializeField] private bool enableDynamicBatching = true;
         [SerializeField] private bool useSRPBatcher = true;
+        [SerializeField] private int lightsPerObjectLimit = 4;
 
         public bool EnableInstancing => enableInstancing;
         public bool EnableDynamicBatching => enableDynamicBatching;
         public bool UseSRPBatcher => useSRPBatcher;
+        public int LightsPerObjectLimit => lightsPerObjectLimit;
 
         protected override RenderPipeline CreatePipeline()
         {

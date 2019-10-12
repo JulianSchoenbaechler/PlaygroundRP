@@ -7,11 +7,13 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
     public sealed class PlaygroundRenderPipelineAssetEditor : Editor
     {
         private SavedBool generalSettingsFoldout;
+        private SavedBool lightingSettingsFoldout;
         private SavedBool advancedSettingsFoldout;
 
         private SerializedProperty useSRPBatcher;
         private SerializedProperty enableDynamicBatching;
         private SerializedProperty enableInstancing;
+        private SerializedProperty lightsPerObjectLimit;
 
         /// <summary>
         /// Is called for rendering and handling GUI events in the inspector.
@@ -21,6 +23,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             serializedObject.Update();
 
             DrawGeneralSettings();
+            DrawLightingSettings();
             DrawAdvancedSettings();
 
             serializedObject.ApplyModifiedProperties();
@@ -41,6 +44,29 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             {
                 EditorGUI.indentLevel++;
                 // General setting property
+                EditorGUI.indentLevel--;
+                EditorGUILayout.Space();
+                EditorGUILayout.Space();
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        /// <summary>
+        /// Draw lighting settings.
+        /// Must be called from GUI call.
+        /// </summary>
+        private void DrawLightingSettings()
+        {
+            lightingSettingsFoldout.Value = EditorGUILayout.BeginFoldoutHeaderGroup(
+                lightingSettingsFoldout.Value,
+                Styles.LightingSettingsText
+            );
+
+            if(lightingSettingsFoldout.Value)
+            {
+                EditorGUI.indentLevel++;
+                lightsPerObjectLimit.intValue = EditorGUILayout.IntSlider(Styles.PerObjectLimit, lightsPerObjectLimit.intValue, 1, 8);
                 EditorGUI.indentLevel--;
                 EditorGUILayout.Space();
                 EditorGUILayout.Space();
@@ -80,11 +106,13 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         private void OnEnable()
         {
             generalSettingsFoldout = new SavedBool($"{target.GetType()}.GeneralSettingsFoldout", false);
+            lightingSettingsFoldout = new SavedBool($"{target.GetType()}.LightingSettingsFoldout", false);
             advancedSettingsFoldout = new SavedBool($"{target.GetType()}.AdvancedSettingsFoldout", false);
 
             enableInstancing = serializedObject.FindProperty("enableInstancing");
             enableDynamicBatching = serializedObject.FindProperty("enableDynamicBatching");
             useSRPBatcher = serializedObject.FindProperty("useSRPBatcher");
+            lightsPerObjectLimit = serializedObject.FindProperty("lightsPerObjectLimit");
         }
 
         /// <summary>
@@ -112,9 +140,9 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             //public static GUIContent supportsMainLightShadowsText = EditorGUIUtility.TrTextContent("Cast Shadows", "If enabled the main light can be a shadow casting light.");
             //public static GUIContent mainLightShadowmapResolutionText = EditorGUIUtility.TrTextContent("Shadow Resolution", "Resolution of the main light shadowmap texture. If cascades are enabled, cascades will be packed into an atlas and this setting controls the maximum shadows atlas resolution.");
 
-            // Additional lights
+            // Lighting
             //public static GUIContent addditionalLightsRenderingModeText = EditorGUIUtility.TrTextContent("Additional Lights", "Additional lights support.");
-            //public static GUIContent perObjectLimit = EditorGUIUtility.TrTextContent("Per Object Limit", "Maximum amount of additional lights. These lights are sorted and culled per-object.");
+            public static GUIContent PerObjectLimit = EditorGUIUtility.TrTextContent("Per Object Limit", "Maximum amount of lights. These lights are sorted and culled per-object.");
             //public static GUIContent supportsAdditionalShadowsText = EditorGUIUtility.TrTextContent("Cast Shadows", "If enabled shadows will be supported for spot lights.\n");
             //public static GUIContent additionalLightsShadowmapResolution = EditorGUIUtility.TrTextContent("Shadow Resolution", "All additional lights are packed into a single shadowmap atlas. This setting controls the atlas size.");
 
