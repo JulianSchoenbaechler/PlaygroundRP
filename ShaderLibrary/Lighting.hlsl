@@ -11,8 +11,29 @@ struct Light
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-// Light data
+// Attenuation
 
+// Attenuation smoothly decreases to light range.
+float DistanceAttenuation(float distanceSqr, half2 distanceAttenuation)
+{
+    // We use a shared distance attenuation for additional directional and puctual lights
+    // for directional lights attenuation will be 1
+    float lightAtten = rcp(distanceSqr);
+
+    // Smoothly fade attenuation to light range. Start fading linearly at 80% of light range.
+    // Therefore:
+    // fadeDistance = (0.8 * 0.8 * lightRangeSqr)
+    // smoothFactor = (lightRangeSqr - distanceSqr) / (lightRangeSqr - fadeDistance)
+    // To fit a MAD instruciton by doing:
+    // distanceSqr * (1.0 / (fadeDistanceSqr - lightRangeSqr)) + (-lightRangeSqr / (fadeDistanceSqr - lightRangeSqr)
+    // distanceSqr *          distanceAttenuation.x            +             distanceAttenuation.y
+    half smoothFactor = saturate(distanceSqr * distanceAttenuation.x + distanceAttenuation.y);
+
+    return lightAtten * smoothFactor;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Light data
 
 // Returns a per-object index given a loop index.
 // This abstract the underlying data implementation for storing lights/light indices
@@ -43,17 +64,19 @@ Light GetPerObjectLight(uint perObjectLightIndex, float3 positionWS)
 {
     float4 directionPositionWS = _VisibleLightDirections[perObjectLightIndex];
     half3 color = _VisibleLightColors[perObjectLightIndex].rgb;
+    half4 distanceAndSpotAttenuation = _VisibleLightAttenuations[perObjectLightIndex];
 
-    float3 lightVector = SafeNormalize(directionPositionWS.xyz - positionWS * directionPositionWS.w);
+    float3 lightVector = directionPositionWS.xyz - positionWS * directionPositionWS.w;
     float distanceSqr = max(dot(lightVector, lightVector), HALF_MIN);
 
     // lightVector / sqr(distanceSqr)
     half3 lightDirection = half3(lightVector * rsqrt(distanceSqr));
+    half attenuation = DistanceAttenuation(distanceSqr, distanceAndSpotAttenuation.xy);// * AngleAttenuation(spotDirection.xyz, lightDirection, distanceAndSpotAttenuation.zw);
 
     Light light;
     light.direction = lightDirection;
-    //light.distanceAttenuation = attenuation;
-    //light.shadowAttenuation
+    light.distanceAttenuation = attenuation;
+    light.shadowAttenuation = 1.0h;
     light.color = color;
 
     return light;
@@ -96,8 +119,9 @@ half4 FragmentDiffuse(InputData inputData, half3 diffuse/*,  half4 specularGloss
     for(uint i = 0; i < lightsCount; i++)
     {
         Light light = GetLightFromLoop(i, inputData.positionWS);
+        half3 attenuatedLightColor = light.color * light.distanceAttenuation;// (light.distanceAttenuation * light.shadowAttenuation);
 
-        diffuseColor += LightingLambert(light.color, light.direction, inputData.normalWS);
+        diffuseColor += LightingLambert(attenuatedLightColor, light.direction, inputData.normalWS);
     }
 
     half3 finalColor = diffuseColor * diffuse;

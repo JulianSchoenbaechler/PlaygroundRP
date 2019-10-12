@@ -15,8 +15,9 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         private const int MaxVisibleLights = 32;
 
         private static int visibleLightsCount = Shader.PropertyToID("_VisibleLightsCount");
-        private static int visibleLightColorsId = Shader.PropertyToID("_VisibleLightColors");
         private static int visibleLightDirectionsId = Shader.PropertyToID("_VisibleLightDirections");
+        private static int visibleLightColorsId = Shader.PropertyToID("_VisibleLightColors");
+        private static int visibleLightAttenuationsId = Shader.PropertyToID("_VisibleLightAttenuations");
 
         private PlaygroundRenderPipelineAsset pipelineAsset;
         private ShaderTagId basePassId = new ShaderTagId("BasePass");
@@ -24,6 +25,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
         private Vector4[] visibleLightColors = new Vector4[MaxVisibleLights];
         private Vector4[] visibleLightDirections = new Vector4[MaxVisibleLights];
+        private Vector4[] visibleLightAttenuations = new Vector4[MaxVisibleLights];
 
         private string cachedCameraTag;
 
@@ -216,8 +218,9 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             CommandBuffer cmd = CommandBufferPool.Get("Setup Light Constants");
 
             cmd.SetGlobalVector(visibleLightsCount, new Vector4(Mathf.Min(MaxVisibleLights, lightsPerObjectLimit), 0.0f, 0.0f, 0.0f));
-            cmd.SetGlobalVectorArray(visibleLightColorsId, visibleLightColors);
             cmd.SetGlobalVectorArray(visibleLightDirectionsId, visibleLightDirections);
+            cmd.SetGlobalVectorArray(visibleLightColorsId, visibleLightColors);
+            cmd.SetGlobalVectorArray(visibleLightAttenuationsId, visibleLightAttenuations);
 
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
@@ -233,6 +236,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             {
                 VisibleLight light = visibleLights[i];
 
+                // Setup matrices
                 if(light.lightType == LightType.Directional)
                 {
                     Vector4 dir = light.localToWorldMatrix.GetColumn(2);
@@ -249,7 +253,32 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                     visibleLightDirections[i] = light.localToWorldMatrix.GetColumn(3);
                 }
 
+                // Light color
                 visibleLightColors[i] = light.finalColor;
+
+                // Attenuation
+                if(light.lightType != LightType.Directional)
+                {
+                    // attenuation = 1.0 / distanceToLightSqr
+                    // The smoothing factors make sure that the light intensity is zero at the light range limit.
+                    // The smoothing factor is a linear fade starting at 80% of the light range.
+                    // smoothFactor = (lightRangeSqr - distanceToLightSqr) / (lightRangeSqr - fadeStartDistanceSqr)
+                    //
+                    // Pre-compute the constant terms below and apply the smooth factor with one MAD instruction
+                    // smoothFactor =  distanceSqr * (1.0 / (fadeDistanceSqr - lightRangeSqr)) + (-lightRangeSqr / (fadeDistanceSqr - lightRangeSqr)
+                    //                 distanceSqr *           oneOverFadeRangeSqr             +              lightRangeSqrOverFadeRangeSqr
+                    float lightRangeSqr = light.range * light.range;
+                    float fadeStartDistanceSqr = 0.8f * 0.8f * lightRangeSqr;
+                    float fadeRangeSqr = (fadeStartDistanceSqr - lightRangeSqr);
+                    float oneOverFadeRangeSqr = 1.0f / fadeRangeSqr;
+                    float lightRangeSqrOverFadeRangeSqr = -lightRangeSqr / fadeRangeSqr;
+
+                    visibleLightAttenuations[i] = new Vector4(oneOverFadeRangeSqr, lightRangeSqrOverFadeRangeSqr, 0f, 1f);
+                }
+                else
+                {
+                    visibleLightAttenuations[i] = new Vector4(0f, 1f, 0f, 1f);
+                }
             }
 
             // Clear unused lights
