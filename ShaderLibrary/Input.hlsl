@@ -24,6 +24,7 @@ CBUFFER_START(_LightBuffer)
     half4 _VisibleLightDirections[MAX_VISIBLE_LIGHTS];
     half4 _VisibleLightColors[MAX_VISIBLE_LIGHTS];
     half4 _VisibleLightAttenuations[MAX_VISIBLE_LIGHTS];
+    half4 _VisibleLightSpotDirections[MAX_VISIBLE_LIGHTS];
 CBUFFER_END
 
 #include "Packages/ch.julian-s.srp.playground/ShaderLibrary/UnityInput.hlsl"

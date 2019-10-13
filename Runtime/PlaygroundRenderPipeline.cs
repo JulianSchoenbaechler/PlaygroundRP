@@ -18,6 +18,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         private static int visibleLightDirectionsId = Shader.PropertyToID("_VisibleLightDirections");
         private static int visibleLightColorsId = Shader.PropertyToID("_VisibleLightColors");
         private static int visibleLightAttenuationsId = Shader.PropertyToID("_VisibleLightAttenuations");
+        private static int visibleLightSpotDirectionsId = Shader.PropertyToID("_VisibleLightSpotDirections");
 
         private PlaygroundRenderPipelineAsset pipelineAsset;
         private ShaderTagId basePassId = new ShaderTagId("BasePass");
@@ -26,6 +27,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         private Vector4[] visibleLightColors = new Vector4[MaxVisibleLights];
         private Vector4[] visibleLightDirections = new Vector4[MaxVisibleLights];
         private Vector4[] visibleLightAttenuations = new Vector4[MaxVisibleLights];
+        private Vector4[] visibleLightSpotDirections = new Vector4[MaxVisibleLights];
 
         private string cachedCameraTag;
 
@@ -221,6 +223,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             cmd.SetGlobalVectorArray(visibleLightDirectionsId, visibleLightDirections);
             cmd.SetGlobalVectorArray(visibleLightColorsId, visibleLightColors);
             cmd.SetGlobalVectorArray(visibleLightAttenuationsId, visibleLightAttenuations);
+            cmd.SetGlobalVectorArray(visibleLightSpotDirectionsId, visibleLightSpotDirections);
 
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
@@ -278,6 +281,42 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                 else
                 {
                     visibleLightAttenuations[i] = new Vector4(0f, 1f, 0f, 1f);
+                }
+
+                // Spot direction
+                if(light.lightType == LightType.Spot)
+                {
+                    Vector4 dir = light.localToWorldMatrix.GetColumn(2);
+                    visibleLightSpotDirections[i] = new Vector4(-dir.x, -dir.y, -dir.z, 0.0f);
+
+                    // Spot attenuation with linear falloff
+                    // SdotL = dot product from spot direction and light direction
+                    // (SdotL - cosOuterAngle) / (cosInnerAngle - cosOuterAngle)
+                    // This can be rewritten as
+                    // invAngleRange = 1.0 / (cosInnerAngle - cosOuterAngle)
+                    // SdotL * invAngleRange + (-cosOuterAngle * invAngleRange)
+
+                    float outerAngle = Mathf.Deg2Rad * light.spotAngle * 0.5f;
+                    float cosOuterAngle = Mathf.Cos(outerAngle);
+                    float tanOuterAngle = Mathf.Tan(outerAngle);
+                    float cosInnerAngle;
+
+                    // Null check for particle lights
+                    // Particle lights will use an inline function as used by the Universal RP
+                    if(light.light != null)
+                        cosInnerAngle = Mathf.Cos(light.light.innerSpotAngle * Mathf.Deg2Rad * 0.5f);
+                    else
+                        cosInnerAngle = Mathf.Cos(Mathf.Atan(tanOuterAngle * ((64.0f - 18.0f) / 64.0f)));
+
+                    float smoothAngleRange = Mathf.Max(0.001f, cosInnerAngle - cosOuterAngle);
+                    float invAngleRange = 1.0f / smoothAngleRange;
+
+                    visibleLightAttenuations[i].z = invAngleRange;
+                    visibleLightAttenuations[i].w = -cosOuterAngle * invAngleRange;
+                }
+                else
+                {
+                    visibleLightSpotDirections[i] = new Vector4(0f, 0f, 1f, 0f);
                 }
             }
 

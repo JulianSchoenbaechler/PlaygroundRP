@@ -32,6 +32,22 @@ float DistanceAttenuation(float distanceSqr, half2 distanceAttenuation)
     return lightAtten * smoothFactor;
 }
 
+// Spot angle attenuation
+half AngleAttenuation(half3 spotDirection, half3 lightDirection, half2 spotAttenuation)
+{
+    // Spot attenuation with linear falloff
+    // SdotL = dot product from spot direction and light direction
+    // (SdotL - cosOuterAngle) / (cosInnerAngle - cosOuterAngle)
+    // This can be rewritten as (fit MAD)
+    // invAngleRange = 1.0 / (cosInnerAngle - cosOuterAngle)
+    // SdotL * invAngleRange + (-cosOuterAngle * invAngleRange)
+    // SdotL * spotAttenuation.x + spotAttenuation.y
+
+    half SdotL = dot(spotDirection, lightDirection);
+    half atten = saturate(SdotL * spotAttenuation.x + spotAttenuation.y);
+    return atten * atten;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Light data
 
@@ -65,13 +81,15 @@ Light GetPerObjectLight(uint perObjectLightIndex, float3 positionWS)
     float4 directionPositionWS = _VisibleLightDirections[perObjectLightIndex];
     half3 color = _VisibleLightColors[perObjectLightIndex].rgb;
     half4 distanceAndSpotAttenuation = _VisibleLightAttenuations[perObjectLightIndex];
+    half4 spotDirection = _VisibleLightSpotDirections[perObjectLightIndex];
 
     float3 lightVector = directionPositionWS.xyz - positionWS * directionPositionWS.w;
     float distanceSqr = max(dot(lightVector, lightVector), HALF_MIN);
 
     // lightVector / sqr(distanceSqr)
     half3 lightDirection = half3(lightVector * rsqrt(distanceSqr));
-    half attenuation = DistanceAttenuation(distanceSqr, distanceAndSpotAttenuation.xy);// * AngleAttenuation(spotDirection.xyz, lightDirection, distanceAndSpotAttenuation.zw);
+    half attenuation = DistanceAttenuation(distanceSqr, distanceAndSpotAttenuation.xy);
+    attenuation *= AngleAttenuation(spotDirection.xyz, lightDirection, distanceAndSpotAttenuation.zw);
 
     Light light;
     light.direction = lightDirection;
