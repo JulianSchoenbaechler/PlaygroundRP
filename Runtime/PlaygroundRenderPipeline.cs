@@ -12,7 +12,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         private const string SetCameraRenderStateTag = "Clear Render State";
         private const string ReleaseResourcesTag = "Release Resources";
 
-        private const int MaxVisibleLights = 32;
+        private const int MaxVisibleLights = 16;
 
         private static int visibleLightsCount = Shader.PropertyToID("_VisibleLightsCount");
         private static int visibleLightDirectionsId = Shader.PropertyToID("_VisibleLightDirections");

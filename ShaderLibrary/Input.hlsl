@@ -4,9 +4,9 @@
 // No use of SSBO as UBO has easier backward compatibility
 // Also on D3D one cannot figure out if platforms is D3D10 without adding shader variants
 // Also on Nintendo Switch, UBO path is faster
-#define MAX_VISIBLE_LIGHTS      32
+#define MAX_VISIBLE_LIGHTS      16
 // Some mobile GPUs have small SP cache for constants
-// Using more than 32 might cause spilling to main memory
+// Using more than 16 might cause spilling to main memory
 
 struct InputData
 {

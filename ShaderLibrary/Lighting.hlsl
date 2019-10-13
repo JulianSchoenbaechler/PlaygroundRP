@@ -134,8 +134,11 @@ half4 FragmentDiffuse(InputData inputData, half3 diffuse/*,  half4 specularGloss
     half3 diffuseColor = 0;
     uint lightsCount = GetLightsCount();
 
-    for(uint i = 0; i < lightsCount; i++)
+    for(uint i = 0; i < MAX_VISIBLE_LIGHTS; i++)
     {
+        if(i >= lightsCount)
+            break;
+
         Light light = GetLightFromLoop(i, inputData.positionWS);
         half3 attenuatedLightColor = light.color * light.distanceAttenuation;// (light.distanceAttenuation * light.shadowAttenuation);
 
