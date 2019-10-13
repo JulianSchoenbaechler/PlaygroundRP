@@ -113,14 +113,15 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                 context.SetupCameraProperties(camera, isStereoSupported);
 
                 // Configure lighting
-                ConfigureLights(ref cullingResults);
+                PerObjectData lightingPOD;
+                ConfigureLights(ref cullingResults, out lightingPOD);
 
                 CommandBuffer cmd = CommandBufferPool.Get(cachedCameraTag);
 
                 using(new ProfilingSample(cmd, cachedCameraTag))
                 {
                     // Setup visible lights
-                    SetupLightConstants(context, lightsPerObjectLimit);
+                    SetupLightConstants(context, (lightingPOD == PerObjectData.None) ? 0 : lightsPerObjectLimit);
 
                     SortingSettings opaqueSortingSettings = new SortingSettings(camera);
                     opaqueSortingSettings.criteria = SortingCriteria.CommonOpaque;
@@ -130,7 +131,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                     DrawingSettings opaqueDrawingSettings = new DrawingSettings(basePassId, opaqueSortingSettings);
                     opaqueDrawingSettings.enableDynamicBatching = pipelineAsset.EnableDynamicBatching;
                     opaqueDrawingSettings.enableInstancing = pipelineAsset.EnableInstancing;
-                    opaqueDrawingSettings.perObjectData = PerObjectData.LightData | PerObjectData.LightIndices;
+                    opaqueDrawingSettings.perObjectData = lightingPOD;
 
 
                     context.ExecuteCommandBuffer(cmd);
@@ -229,13 +230,33 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             CommandBufferPool.Release(cmd);
         }
 
-        private void ConfigureLights(ref CullingResults cullingResults)
+        private void ConfigureLights(ref CullingResults cullingResults, out PerObjectData lightingPOD)
         {
             var visibleLights = cullingResults.visibleLights;
             int count = Mathf.Min(visibleLights.Length, MaxVisibleLights);
             int i = 0;
 
-            for(; i < count; i++)
+            // No visible lights in scene
+            if(count == 0)
+            {
+                lightingPOD = PerObjectData.None;
+                return;
+            }
+
+            // When light limit gets exceeded
+            if(visibleLights.Length > MaxVisibleLights)
+            {
+                var lightIndices = cullingResults.GetLightIndexMap(Allocator.Temp);
+
+                for(i = MaxVisibleLights; i < visibleLights.Length; i++)
+                    lightIndices[i] = -1;
+
+                cullingResults.SetLightIndexMap(lightIndices);
+                lightIndices.Dispose();
+            }
+
+            // Iterate through all visible lights
+            for(i = 0; i < count; i++)
             {
                 VisibleLight light = visibleLights[i];
 
@@ -323,6 +344,8 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             // Clear unused lights
             for(; i < MaxVisibleLights; i++)
                 visibleLightColors[i] = Color.clear;
+
+            lightingPOD = PerObjectData.LightData | PerObjectData.LightIndices;
         }
     }
 }
