@@ -12,24 +12,13 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         private const string SetCameraRenderStateTag = "Clear Render State";
         private const string ReleaseResourcesTag = "Release Resources";
 
-        private const int MaxVisibleLights = 16;
-
-        private static int visibleLightsCount = Shader.PropertyToID("_VisibleLightsCount");
-        private static int visibleLightDirectionsId = Shader.PropertyToID("_VisibleLightDirections");
-        private static int visibleLightColorsId = Shader.PropertyToID("_VisibleLightColors");
-        private static int visibleLightAttenuationsId = Shader.PropertyToID("_VisibleLightAttenuations");
-        private static int visibleLightSpotDirectionsId = Shader.PropertyToID("_VisibleLightSpotDirections");
-
         private PlaygroundRenderPipelineAsset pipelineAsset;
         private ShaderTagId basePassId = new ShaderTagId("BasePass");
         private bool isStereoSupported = false;
 
-        private Vector4[] visibleLightColors = new Vector4[MaxVisibleLights];
-        private Vector4[] visibleLightDirections = new Vector4[MaxVisibleLights];
-        private Vector4[] visibleLightAttenuations = new Vector4[MaxVisibleLights];
-        private Vector4[] visibleLightSpotDirections = new Vector4[MaxVisibleLights];
-
         private string cachedCameraTag;
+
+        private ForwardLights forwardLights;
 
         /// <summary>
         /// Gets the maximum shadow bias that can be applied.
@@ -75,6 +64,9 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
             GraphicsSettings.lightsUseLinearIntensity = false;
             Shader.globalRenderPipeline = ShaderTagName;
+
+            // Create forward lights object
+            forwardLights = new ForwardLights();
         }
 
         /// <summary>
@@ -87,12 +79,15 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             FilteringSettings opaqueFilteringSettings = new FilteringSettings(RenderQueueRange.opaque);
             FilteringSettings transparentFilteringSettings = new FilteringSettings(RenderQueueRange.transparent);
 
-            int lightsPerObjectLimit = pipelineAsset.LightsPerObjectLimit;
             GraphicsSettings.useScriptableRenderPipelineBatching = pipelineAsset.UseSRPBatcher;
+
+            BeginFrameRendering(context, cameras);
 
             // Camera render loop
             foreach(Camera camera in cameras)
             {
+                BeginCameraRendering(context, camera);
+
 #if UNITY_EDITOR
                 cachedCameraTag = camera.name;
 #else
@@ -106,23 +101,21 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
                 // Culling. Adjust culling parameters for your needs. One could enable/disable
                 // per-object lighting or control shadow caster distance.
-                camera.TryGetCullingParameters(isStereoSupported, out var cullingParameters);
+                if(!camera.TryGetCullingParameters(isStereoSupported, out var cullingParameters))
+                    continue;
+
                 var cullingResults = context.Cull(ref cullingParameters);
-
-                // Helper method to setup some per-camera shader constants and camera matrices
-                context.SetupCameraProperties(camera, isStereoSupported);
-
-                // Configure lighting
-                PerObjectData lightingPOD;
-                ConfigureLights(ref cullingResults, out lightingPOD);
-
                 CommandBuffer cmd = CommandBufferPool.Get(cachedCameraTag);
 
                 using(new ProfilingSample(cmd, cachedCameraTag))
                 {
-                    // Setup visible lights
-                    SetupLightConstants(context, (lightingPOD == PerObjectData.None) ? 0 : lightsPerObjectLimit);
+                    // Helper method to setup some per-camera shader constants and camera matrices
+                    context.SetupCameraProperties(camera, isStereoSupported);
 
+                    // Setup lighting
+                    PerObjectData lightingPOD = forwardLights.Setup(context, ref cullingResults, pipelineAsset.LightsPerObjectLimit);
+
+                    // Opaque sorting settings
                     SortingSettings opaqueSortingSettings = new SortingSettings(camera);
                     opaqueSortingSettings.criteria = SortingCriteria.CommonOpaque;
 
@@ -175,7 +168,10 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                 // Submit commands to GPU. Up to this point all commands have been enqueued in the context.
                 // Several submits can be done in a frame to better controls CPU/GPU workload.
                 context.Submit();
+                EndCameraRendering(context, camera);
             }
+
+            EndFrameRendering(context, cameras);
         }
 
         /// <summary>
@@ -214,138 +210,6 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
             SceneViewDrawMode.SetupDrawMode();
 #endif
-        }
-
-        private void SetupLightConstants(ScriptableRenderContext context, int lightsPerObjectLimit)
-        {
-            CommandBuffer cmd = CommandBufferPool.Get("Setup Light Constants");
-
-            cmd.SetGlobalVector(visibleLightsCount, new Vector4(Mathf.Min(MaxVisibleLights, lightsPerObjectLimit), 0.0f, 0.0f, 0.0f));
-            cmd.SetGlobalVectorArray(visibleLightDirectionsId, visibleLightDirections);
-            cmd.SetGlobalVectorArray(visibleLightColorsId, visibleLightColors);
-            cmd.SetGlobalVectorArray(visibleLightAttenuationsId, visibleLightAttenuations);
-            cmd.SetGlobalVectorArray(visibleLightSpotDirectionsId, visibleLightSpotDirections);
-
-            context.ExecuteCommandBuffer(cmd);
-            CommandBufferPool.Release(cmd);
-        }
-
-        private void ConfigureLights(ref CullingResults cullingResults, out PerObjectData lightingPOD)
-        {
-            var visibleLights = cullingResults.visibleLights;
-            int count = Mathf.Min(visibleLights.Length, MaxVisibleLights);
-            int i = 0;
-
-            // No visible lights in scene
-            if(count == 0)
-            {
-                lightingPOD = PerObjectData.None;
-                return;
-            }
-
-            // When light limit gets exceeded
-            if(visibleLights.Length > MaxVisibleLights)
-            {
-                var lightIndices = cullingResults.GetLightIndexMap(Allocator.Temp);
-
-                for(i = MaxVisibleLights; i < visibleLights.Length; i++)
-                    lightIndices[i] = -1;
-
-                cullingResults.SetLightIndexMap(lightIndices);
-                lightIndices.Dispose();
-            }
-
-            // Iterate through all visible lights
-            for(i = 0; i < count; i++)
-            {
-                VisibleLight light = visibleLights[i];
-
-                // Setup matrices
-                if(light.lightType == LightType.Directional)
-                {
-                    Vector4 dir = light.localToWorldMatrix.GetColumn(2);
-
-                    // Negate for inverting direction
-                    dir.x = -dir.x;
-                    dir.y = -dir.y;
-                    dir.z = -dir.z;
-
-                    visibleLightDirections[i] = dir;
-                }
-                else
-                {
-                    visibleLightDirections[i] = light.localToWorldMatrix.GetColumn(3);
-                }
-
-                // Light color
-                visibleLightColors[i] = light.finalColor;
-
-                // Attenuation
-                if(light.lightType != LightType.Directional)
-                {
-                    // attenuation = 1.0 / distanceToLightSqr
-                    // The smoothing factors make sure that the light intensity is zero at the light range limit.
-                    // The smoothing factor is a linear fade starting at 80% of the light range.
-                    // smoothFactor = (lightRangeSqr - distanceToLightSqr) / (lightRangeSqr - fadeStartDistanceSqr)
-                    //
-                    // Pre-compute the constant terms below and apply the smooth factor with one MAD instruction
-                    // smoothFactor =  distanceSqr * (1.0 / (fadeDistanceSqr - lightRangeSqr)) + (-lightRangeSqr / (fadeDistanceSqr - lightRangeSqr)
-                    //                 distanceSqr *           oneOverFadeRangeSqr             +              lightRangeSqrOverFadeRangeSqr
-                    float lightRangeSqr = light.range * light.range;
-                    float fadeStartDistanceSqr = 0.8f * 0.8f * lightRangeSqr;
-                    float fadeRangeSqr = (fadeStartDistanceSqr - lightRangeSqr);
-                    float oneOverFadeRangeSqr = 1.0f / fadeRangeSqr;
-                    float lightRangeSqrOverFadeRangeSqr = -lightRangeSqr / fadeRangeSqr;
-
-                    visibleLightAttenuations[i] = new Vector4(oneOverFadeRangeSqr, lightRangeSqrOverFadeRangeSqr, 0f, 1f);
-                }
-                else
-                {
-                    visibleLightAttenuations[i] = new Vector4(0f, 1f, 0f, 1f);
-                }
-
-                // Spot direction
-                if(light.lightType == LightType.Spot)
-                {
-                    Vector4 dir = light.localToWorldMatrix.GetColumn(2);
-                    visibleLightSpotDirections[i] = new Vector4(-dir.x, -dir.y, -dir.z, 0.0f);
-
-                    // Spot attenuation with linear falloff
-                    // SdotL = dot product from spot direction and light direction
-                    // (SdotL - cosOuterAngle) / (cosInnerAngle - cosOuterAngle)
-                    // This can be rewritten as
-                    // invAngleRange = 1.0 / (cosInnerAngle - cosOuterAngle)
-                    // SdotL * invAngleRange + (-cosOuterAngle * invAngleRange)
-
-                    float outerAngle = Mathf.Deg2Rad * light.spotAngle * 0.5f;
-                    float cosOuterAngle = Mathf.Cos(outerAngle);
-                    float tanOuterAngle = Mathf.Tan(outerAngle);
-                    float cosInnerAngle;
-
-                    // Null check for particle lights
-                    // Particle lights will use an inline function as used by the Universal RP
-                    if(light.light != null)
-                        cosInnerAngle = Mathf.Cos(light.light.innerSpotAngle * Mathf.Deg2Rad * 0.5f);
-                    else
-                        cosInnerAngle = Mathf.Cos(Mathf.Atan(tanOuterAngle * ((64.0f - 18.0f) / 64.0f)));
-
-                    float smoothAngleRange = Mathf.Max(0.001f, cosInnerAngle - cosOuterAngle);
-                    float invAngleRange = 1.0f / smoothAngleRange;
-
-                    visibleLightAttenuations[i].z = invAngleRange;
-                    visibleLightAttenuations[i].w = -cosOuterAngle * invAngleRange;
-                }
-                else
-                {
-                    visibleLightSpotDirections[i] = new Vector4(0f, 0f, 1f, 0f);
-                }
-            }
-
-            // Clear unused lights
-            for(; i < MaxVisibleLights; i++)
-                visibleLightColors[i] = Color.clear;
-
-            lightingPOD = PerObjectData.LightData | PerObjectData.LightIndices;
         }
     }
 }
