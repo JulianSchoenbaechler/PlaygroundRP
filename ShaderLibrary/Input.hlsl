@@ -27,6 +27,24 @@ CBUFFER_START(_LightBuffer)
     half4 _VisibleLightSpotDirections[MAX_VISIBLE_LIGHTS];
 CBUFFER_END
 
+TEXTURE2D_SHADOW(_ShadowMap);
+SAMPLER_CMP(sampler_ShadowMap);
+
+CBUFFER_START(_ShadowBuffer)
+    float4x4 _WorldToShadowMatrix;
+CBUFFER_END
+
+// Move this....
+float ShadowAttenuation(float3 positionWS)
+{
+    float4 shadowPos = mul(_WorldToShadowMatrix, float4(positionWS, 1.0));
+    shadowPos.xyz /= shadowPos.w;
+
+    float attenuation = SAMPLE_TEXTURE2D_SHADOW(_ShadowMap, sampler_ShadowMap, shadowPos.xyz);
+    //attenuation = LerpWhiteTo(attenuation, 1.0);
+    return attenuation;
+}
+
 #include "Packages/ch.julian-s.srp.playground/ShaderLibrary/UnityInput.hlsl"
 
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/SpaceTransforms.hlsl"

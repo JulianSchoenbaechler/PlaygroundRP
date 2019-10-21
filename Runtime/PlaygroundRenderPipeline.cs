@@ -12,6 +12,9 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         private const string SetCameraRenderStateTag = "Clear Render State";
         private const string ReleaseResourcesTag = "Release Resources";
 
+        private static int ShadowMapId = Shader.PropertyToID("_ShadowMap");
+        private static int WorldToShadowMatrixId = Shader.PropertyToID("_WorldToShadowMatrix");
+
         private PlaygroundRenderPipelineAsset pipelineAsset;
         private ShaderTagId basePassId = new ShaderTagId("BasePass");
         private bool isStereoSupported = false;
@@ -19,6 +22,8 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         private string cachedCameraTag;
 
         private ForwardLights forwardLights;
+
+        private RenderTexture shadowMap;
 
         /// <summary>
         /// Gets the maximum shadow bias that can be applied.
@@ -63,6 +68,9 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             RenderingUtils.ClearSystemInfoCache();
 
             GraphicsSettings.lightsUseLinearIntensity = false;
+            QualitySettings.shadowCascades = 1;
+            QualitySettings.shadows = ShadowQuality.All;
+            QualitySettings.shadowDistance = 50f;
             Shader.globalRenderPipeline = ShaderTagName;
 
             // Create forward lights object
@@ -109,6 +117,9 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
                 using(new ProfilingSample(cmd, cachedCameraTag))
                 {
+                    // Shadows?
+                    RenderShadows(context, ref cullingResults);
+
                     // Helper method to setup some per-camera shader constants and camera matrices
                     context.SetupCameraProperties(camera, isStereoSupported);
 
@@ -126,16 +137,14 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                     opaqueDrawingSettings.enableInstancing = pipelineAsset.EnableInstancing;
                     opaqueDrawingSettings.perObjectData = lightingPOD;
 
-
                     context.ExecuteCommandBuffer(cmd);
                     cmd.Clear();
 
-                    // Get new command buffer from pool for Profiling distinction
+                    // Get new command buffer from pool for profiling distinction
                     CommandBuffer cmdSetup = CommandBufferPool.Get(SetRenderTargetTag);
 
                     // Sets active render target and clear based on camera backgroud color
-                    cmdSetup.SetRenderTarget(BuiltinRenderTextureType.CurrentActive);
-                    cmdSetup.ClearRenderTarget(true, true, camera.backgroundColor);
+                    CoreUtils.SetRenderTarget(cmdSetup, BuiltinRenderTextureType.CurrentActive, ClearFlag.All, camera.backgroundColor);
 
                     context.ExecuteCommandBuffer(cmdSetup);
                     CommandBufferPool.Release(cmdSetup);
@@ -146,21 +155,28 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
                     // Render remaining objects that do not match the shader passes with the Unity's error shader
                     RenderingUtils.RenderObjectsWithError(context, ref cullingResults, camera, opaqueFilteringSettings, SortingCriteria.None);
+
+                    // Renders skybox if required
+                    if(camera.clearFlags == CameraClearFlags.Skybox && RenderSettings.skybox != null)
+                        context.DrawSkybox(camera);
+
+#if UNITY_EDITOR
+                    if(UnityEditor.Handles.ShouldRenderGizmos())
+                        context.DrawGizmos(camera, GizmoSubset.PreImageEffects);
+#endif
+
+#if UNITY_EDITOR
+                    if(UnityEditor.Handles.ShouldRenderGizmos())
+                        context.DrawGizmos(camera, GizmoSubset.PostImageEffects);
+#endif
+
+                    // Cleaning up
+                    if(shadowMap)
+                    {
+                        RenderTexture.ReleaseTemporary(shadowMap);
+                        shadowMap = null;
+                    }
                 }
-
-                // Renders skybox if required
-                if(camera.clearFlags == CameraClearFlags.Skybox && RenderSettings.skybox != null)
-                    context.DrawSkybox(camera);
-
-#if UNITY_EDITOR
-                if(UnityEditor.Handles.ShouldRenderGizmos())
-                    context.DrawGizmos(camera, GizmoSubset.PreImageEffects);
-#endif
-
-#if UNITY_EDITOR
-                if(UnityEditor.Handles.ShouldRenderGizmos())
-                    context.DrawGizmos(camera, GizmoSubset.PostImageEffects);
-#endif
 
                 context.ExecuteCommandBuffer(cmd);
                 CommandBufferPool.Release(cmd);
@@ -172,6 +188,101 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             }
 
             EndFrameRendering(context, cameras);
+        }
+
+        private bool ExtractSpotLightMatrix(ref CullingResults cullingResults, int shadowLightIndex, out Matrix4x4 shadowMatrix, out Matrix4x4 viewMatrix, out Matrix4x4 projMatrix)
+        {
+            bool success = cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(shadowLightIndex, out viewMatrix, out projMatrix, out ShadowSplitData splitData);
+            shadowMatrix = GetShadowTransform(projMatrix, viewMatrix);
+            return success;
+        }
+
+        private Matrix4x4 GetShadowTransform(Matrix4x4 proj, Matrix4x4 view)
+        {
+            // Currently CullResults ComputeDirectionalShadowMatricesAndCullingPrimitives doesn't
+            // apply z reversal to projection matrix. We need to do it manually here.
+            if(SystemInfo.usesReversedZBuffer)
+            {
+                proj.m20 = -proj.m20;
+                proj.m21 = -proj.m21;
+                proj.m22 = -proj.m22;
+                proj.m23 = -proj.m23;
+            }
+
+            Matrix4x4 worldToShadow = proj * view;
+
+            var textureScaleAndBias = Matrix4x4.identity;
+            textureScaleAndBias.m00 = 0.5f;
+            textureScaleAndBias.m11 = 0.5f;
+            textureScaleAndBias.m22 = 0.5f;
+            textureScaleAndBias.m03 = 0.5f;
+            textureScaleAndBias.m23 = 0.5f;
+            textureScaleAndBias.m13 = 0.5f;
+
+            // Apply texture scale and offset to save a MAD in shader.
+            return textureScaleAndBias * worldToShadow;
+        }
+
+        private void RenderShadows(ScriptableRenderContext context, ref CullingResults cullingResults)
+        {
+            shadowMap = RenderTexture.GetTemporary(
+                512,
+                512,
+                16,
+                RenderTextureFormat.Shadowmap
+            );
+            shadowMap.filterMode = FilterMode.Bilinear;
+            shadowMap.wrapMode = TextureWrapMode.Clamp;
+
+            // Get new command buffer from pool for profiling distinction
+            CommandBuffer cmd = CommandBufferPool.Get("Render Shadows");
+
+            using(new ProfilingSample(cmd, "Render Shadows"))
+            {
+                // Sets active render target and clear
+                CoreUtils.SetRenderTarget(cmd, shadowMap, RenderBufferLoadAction.DontCare, RenderBufferStoreAction.Store, ClearFlag.Depth);
+                context.ExecuteCommandBuffer(cmd);
+                cmd.Clear();
+
+                if(cullingResults.GetShadowCasterBounds(0, out var bounds))
+                {
+                    bool extractedMatrix = ExtractSpotLightMatrix(
+                        ref cullingResults,
+                        0,
+                        out Matrix4x4 shadowMatrix,
+                        out Matrix4x4 viewMatrix,
+                        out Matrix4x4 projMatrix
+                    );
+
+                    cmd.SetViewProjectionMatrices(viewMatrix, projMatrix);
+                    context.ExecuteCommandBuffer(cmd);
+                    cmd.Clear();
+
+                    ShadowDrawingSettings settings = new ShadowDrawingSettings(cullingResults, 0);
+                    context.DrawShadows(ref settings);
+
+                    // Set constants
+                    if(SystemInfo.usesReversedZBuffer)
+                    {
+                        projMatrix.m20 = -projMatrix.m20;
+                        projMatrix.m21 = -projMatrix.m21;
+                        projMatrix.m22 = -projMatrix.m22;
+                        projMatrix.m23 = -projMatrix.m23;
+                    }
+
+                    Matrix4x4 scaleOffset = Matrix4x4.identity;
+                    scaleOffset.m00 = scaleOffset.m11 = scaleOffset.m22 = 0.5f;
+                    scaleOffset.m03 = scaleOffset.m13 = scaleOffset.m23 = 0.5f;
+
+                    Matrix4x4 worldToShadowMatrix = scaleOffset * (projMatrix * viewMatrix);
+                    cmd.SetGlobalMatrix(WorldToShadowMatrixId, worldToShadowMatrix);
+                    cmd.SetGlobalTexture(ShadowMapId, shadowMap);
+                }
+
+            }
+
+            context.ExecuteCommandBuffer(cmd);
+            CommandBufferPool.Release(cmd);
         }
 
         /// <summary>

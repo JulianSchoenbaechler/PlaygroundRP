@@ -94,7 +94,7 @@ Light GetPerObjectLight(uint perObjectLightIndex, float3 positionWS)
     Light light;
     light.direction = lightDirection;
     light.distanceAttenuation = attenuation;
-    light.shadowAttenuation = 1.0h;
+    light.shadowAttenuation = ShadowAttenuation(positionWS);
     light.color = color;
 
     return light;
@@ -140,7 +140,7 @@ half4 FragmentDiffuse(InputData inputData, half3 diffuse/*,  half4 specularGloss
             break;
 
         Light light = GetLightFromLoop(i, inputData.positionWS);
-        half3 attenuatedLightColor = light.color * light.distanceAttenuation;// (light.distanceAttenuation * light.shadowAttenuation);
+        half3 attenuatedLightColor = light.color * (light.distanceAttenuation * light.shadowAttenuation);
 
         diffuseColor += LightingLambert(attenuatedLightColor, light.direction, inputData.normalWS);
     }
