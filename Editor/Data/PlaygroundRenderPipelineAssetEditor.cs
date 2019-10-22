@@ -8,12 +8,20 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
     {
         private SavedBool generalSettingsFoldout;
         private SavedBool lightingSettingsFoldout;
+        private SavedBool shadowsSettingsFoldout;
         private SavedBool advancedSettingsFoldout;
+
+        private SerializedProperty lightsPerObjectLimit;
+        private SerializedProperty shadowResolution;
+
+        private SerializedProperty shadowDistance;
+        private SerializedProperty shadowDepthBias;
+        private SerializedProperty shadowNormalBias;
+        private SerializedProperty supportsSoftShadows;
 
         private SerializedProperty useSRPBatcher;
         private SerializedProperty enableDynamicBatching;
         private SerializedProperty enableInstancing;
-        private SerializedProperty lightsPerObjectLimit;
 
         /// <summary>
         /// Is called for rendering and handling GUI events in the inspector.
@@ -24,6 +32,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
             DrawGeneralSettings();
             DrawLightingSettings();
+            DrawShadowsSettings();
             DrawAdvancedSettings();
 
             serializedObject.ApplyModifiedProperties();
@@ -67,6 +76,33 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             {
                 EditorGUI.indentLevel++;
                 lightsPerObjectLimit.intValue = EditorGUILayout.IntSlider(Styles.PerObjectLimit, lightsPerObjectLimit.intValue, 1, 8);
+                EditorGUILayout.PropertyField(shadowResolution, Styles.LightsShadowmapResolution);
+                EditorGUI.indentLevel--;
+                EditorGUILayout.Space();
+                EditorGUILayout.Space();
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        /// <summary>
+        /// Draw shadows settings.
+        /// Must be called from GUI call.
+        /// </summary>
+        private void DrawShadowsSettings()
+        {
+            shadowsSettingsFoldout.Value = EditorGUILayout.BeginFoldoutHeaderGroup(
+                shadowsSettingsFoldout.Value,
+                Styles.ShadowSettingsText
+            );
+
+            if(shadowsSettingsFoldout.Value)
+            {
+                EditorGUI.indentLevel++;
+                EditorGUILayout.PropertyField(shadowDistance, Styles.ShadowDistanceText);
+                shadowDepthBias.floatValue = EditorGUILayout.Slider(Styles.ShadowDepthBias, shadowDepthBias.floatValue, 0f, PlaygroundRenderPipeline.MaxShadowBias);
+                shadowNormalBias.floatValue = EditorGUILayout.Slider(Styles.ShadowNormalBias, shadowNormalBias.floatValue, 0f, PlaygroundRenderPipeline.MaxShadowBias);
+                EditorGUILayout.PropertyField(supportsSoftShadows, Styles.SupportsSoftShadows);
                 EditorGUI.indentLevel--;
                 EditorGUILayout.Space();
                 EditorGUILayout.Space();
@@ -107,12 +143,20 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
         {
             generalSettingsFoldout = new SavedBool($"{target.GetType()}.GeneralSettingsFoldout", false);
             lightingSettingsFoldout = new SavedBool($"{target.GetType()}.LightingSettingsFoldout", false);
+            shadowsSettingsFoldout = new SavedBool($"{target.GetType()}.ShadowsSettingsFoldout", false);
             advancedSettingsFoldout = new SavedBool($"{target.GetType()}.AdvancedSettingsFoldout", false);
+
+            lightsPerObjectLimit = serializedObject.FindProperty("lightsPerObjectLimit");
+            shadowResolution = serializedObject.FindProperty("shadowResolution");
+
+            shadowDistance = serializedObject.FindProperty("shadowDistance");
+            shadowDepthBias = serializedObject.FindProperty("shadowDepthBias");
+            shadowNormalBias = serializedObject.FindProperty("shadowNormalBias");
+            supportsSoftShadows = serializedObject.FindProperty("supportsSoftShadows");
 
             enableInstancing = serializedObject.FindProperty("enableInstancing");
             enableDynamicBatching = serializedObject.FindProperty("enableDynamicBatching");
             useSRPBatcher = serializedObject.FindProperty("useSRPBatcher");
-            lightsPerObjectLimit = serializedObject.FindProperty("lightsPerObjectLimit");
         }
 
         /// <summary>
@@ -143,15 +187,15 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             // Lighting
             //public static GUIContent addditionalLightsRenderingModeText = EditorGUIUtility.TrTextContent("Additional Lights", "Additional lights support.");
             public static GUIContent PerObjectLimit = EditorGUIUtility.TrTextContent("Per Object Limit", "Maximum amount of lights. These lights are sorted and culled per-object.");
+            public static GUIContent LightsShadowmapResolution = EditorGUIUtility.TrTextContent("Shadow Resolution", "All lights are packed into a single shadowmap atlas. This setting controls the atlas size.");
             //public static GUIContent supportsAdditionalShadowsText = EditorGUIUtility.TrTextContent("Cast Shadows", "If enabled shadows will be supported for spot lights.\n");
-            //public static GUIContent additionalLightsShadowmapResolution = EditorGUIUtility.TrTextContent("Shadow Resolution", "All additional lights are packed into a single shadowmap atlas. This setting controls the atlas size.");
 
             // Shadow settings
-            //public static GUIContent shadowDistanceText = EditorGUIUtility.TrTextContent("Distance", "Maximum shadow rendering distance.");
+            public static GUIContent ShadowDistanceText = EditorGUIUtility.TrTextContent("Distance", "Maximum shadow rendering distance.");
             //public static GUIContent shadowCascadesText = EditorGUIUtility.TrTextContent("Cascades", "Number of cascade splits used in for directional shadows");
-            //public static GUIContent shadowDepthBias = EditorGUIUtility.TrTextContent("Depth Bias", "Controls the distance at which the shadows will be pushed away from the light. Useful for avoiding false self-shadowing artifacts.");
-            //public static GUIContent shadowNormalBias = EditorGUIUtility.TrTextContent("Normal Bias", "Controls distance at which the shadow casting surfaces will be shrunk along the surface normal. Useful for avoiding false self-shadowing artifacts.");
-            //public static GUIContent supportsSoftShadows = EditorGUIUtility.TrTextContent("Soft Shadows", "If enabled pipeline will perform shadow filtering. Otherwise all lights that cast shadows will fallback to perform a single shadow sample.");
+            public static GUIContent ShadowDepthBias = EditorGUIUtility.TrTextContent("Depth Bias", "Controls the distance at which the shadows will be pushed away from the light. Useful for avoiding false self-shadowing artifacts.");
+            public static GUIContent ShadowNormalBias = EditorGUIUtility.TrTextContent("Normal Bias", "Controls distance at which the shadow casting surfaces will be shrunk along the surface normal. Useful for avoiding false self-shadowing artifacts.");
+            public static GUIContent SupportsSoftShadows = EditorGUIUtility.TrTextContent("Soft Shadows", "If enabled pipeline will perform shadow filtering. Otherwise all lights that cast shadows will fallback to perform a single shadow sample.");
 
             // Advanced settings
             public static GUIContent SRPBatcher = EditorGUIUtility.TrTextContent("SRP Batcher", "If enabled, the render pipeline uses the SRP batcher.");

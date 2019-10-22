@@ -32,6 +32,8 @@ SAMPLER_CMP(sampler_ShadowMap);
 
 CBUFFER_START(_ShadowBuffer)
     float4x4 _WorldToShadowMatrix;
+    float _ShadowStrength;
+    float4 _ShadowBias; // x: depth bias, y: normal bias
 CBUFFER_END
 
 // Move this....
@@ -43,6 +45,17 @@ float ShadowAttenuation(float3 positionWS)
     float attenuation = SAMPLE_TEXTURE2D_SHADOW(_ShadowMap, sampler_ShadowMap, shadowPos.xyz);
     //attenuation = LerpWhiteTo(attenuation, 1.0);
     return attenuation;
+}
+
+float3 ApplyShadowBias(float3 positionWS, float3 normalWS, float3 lightDirection)
+{
+    float invNdotL = 1.0 - saturate(dot(lightDirection, normalWS));
+    float scale = invNdotL * _ShadowBias.y;
+
+    // Normal bias is negative in order to apply an inset normal offset
+    positionWS = lightDirection * _ShadowBias.xxx + positionWS;
+    positionWS = normalWS * scale.xxx + positionWS;
+    return positionWS;
 }
 
 #include "Packages/ch.julian-s.srp.playground/ShaderLibrary/UnityInput.hlsl"

@@ -1,6 +1,8 @@
 #ifndef PLAYGROUND_SHADOW_CASTER_PASS_INCLUDED
 #define PLAYGROUND_SHADOW_CASTER_PASS_INCLUDED
 
+float3 _LightDirection;
+
 struct Attributes
 {
     float4 positionOS   : POSITION;
@@ -21,12 +23,9 @@ struct Varyings
 
 float4 GetShadowPositionHClip(Attributes input)
 {
-    //float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
-    //float3 normalWS = TransformObjectToWorldNormal(input.normalOS);
-
-    //float4 positionCS = TransformWorldToHClip(ApplyShadowBias(positionWS, normalWS, _LightDirection));
+    float3 normalWS = TransformObjectToWorldNormal(input.normalOS);
     float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
-    float4 positionCS = TransformWorldToHClip(positionWS);
+    float4 positionCS = TransformWorldToHClip(ApplyShadowBias(positionWS, normalWS, _LightDirection));
 
 #if UNITY_REVERSED_Z
     positionCS.z = min(positionCS.z, positionCS.w * UNITY_NEAR_CLIP_VALUE);

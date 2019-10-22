@@ -89,6 +89,11 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
             GraphicsSettings.useScriptableRenderPipelineBatching = pipelineAsset.UseSRPBatcher;
 
+            int shadowResolution = (int)pipelineAsset.ShadowResolution;
+            float shadowNormalBias = pipelineAsset.ShadowNormalBias;
+            float shadowDepthBias = pipelineAsset.ShadowDepthBias;
+            bool supportsSoftShadows = pipelineAsset.SupportsSoftShadows;
+
             BeginFrameRendering(context, cameras);
 
             // Camera render loop
@@ -118,7 +123,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
                 using(new ProfilingSample(cmd, cachedCameraTag))
                 {
                     // Shadows?
-                    RenderShadows(context, ref cullingResults);
+                    RenderShadows(context, ref cullingResults, shadowResolution, shadowNormalBias, shadowDepthBias, supportsSoftShadows);
 
                     // Helper method to setup some per-camera shader constants and camera matrices
                     context.SetupCameraProperties(camera, isStereoSupported);
@@ -190,44 +195,11 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
             EndFrameRendering(context, cameras);
         }
 
-        private bool ExtractSpotLightMatrix(ref CullingResults cullingResults, int shadowLightIndex, out Matrix4x4 shadowMatrix, out Matrix4x4 viewMatrix, out Matrix4x4 projMatrix)
-        {
-            bool success = cullingResults.ComputeSpotShadowMatricesAndCullingPrimitives(shadowLightIndex, out viewMatrix, out projMatrix, out ShadowSplitData splitData);
-            shadowMatrix = GetShadowTransform(projMatrix, viewMatrix);
-            return success;
-        }
-
-        private Matrix4x4 GetShadowTransform(Matrix4x4 proj, Matrix4x4 view)
-        {
-            // Currently CullResults ComputeDirectionalShadowMatricesAndCullingPrimitives doesn't
-            // apply z reversal to projection matrix. We need to do it manually here.
-            if(SystemInfo.usesReversedZBuffer)
-            {
-                proj.m20 = -proj.m20;
-                proj.m21 = -proj.m21;
-                proj.m22 = -proj.m22;
-                proj.m23 = -proj.m23;
-            }
-
-            Matrix4x4 worldToShadow = proj * view;
-
-            var textureScaleAndBias = Matrix4x4.identity;
-            textureScaleAndBias.m00 = 0.5f;
-            textureScaleAndBias.m11 = 0.5f;
-            textureScaleAndBias.m22 = 0.5f;
-            textureScaleAndBias.m03 = 0.5f;
-            textureScaleAndBias.m23 = 0.5f;
-            textureScaleAndBias.m13 = 0.5f;
-
-            // Apply texture scale and offset to save a MAD in shader.
-            return textureScaleAndBias * worldToShadow;
-        }
-
-        private void RenderShadows(ScriptableRenderContext context, ref CullingResults cullingResults)
+        private void RenderShadows(ScriptableRenderContext context, ref CullingResults cullingResults, int shadowResolution, float normalBias, float depthBias, bool supportsSoftShadows = false)
         {
             shadowMap = RenderTexture.GetTemporary(
-                512,
-                512,
+                shadowResolution,
+                shadowResolution,
                 16,
                 RenderTextureFormat.Shadowmap
             );
@@ -246,7 +218,7 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
                 if(cullingResults.GetShadowCasterBounds(0, out var bounds))
                 {
-                    bool extractedMatrix = ExtractSpotLightMatrix(
+                    bool successful = ShadowsUtils.ExtractSpotLightMatrix(
                         ref cullingResults,
                         0,
                         out Matrix4x4 shadowMatrix,
@@ -260,6 +232,10 @@ namespace JulianSchoenbaechler.Rendering.PlaygroundRP
 
                     ShadowDrawingSettings settings = new ShadowDrawingSettings(cullingResults, 0);
                     context.DrawShadows(ref settings);
+
+                    VisibleLight shadowLight = cullingResults.visibleLights[0];
+                    Vector4 shadowBias = ShadowsUtils.GetShadowBias(ref shadowLight, projMatrix, shadowResolution, normalBias, depthBias, supportsSoftShadows);
+                    ShadowsUtils.SetupShadowCasterConstantBuffer(cmd, ref shadowLight, shadowBias);
 
                     // Set constants
                     if(SystemInfo.usesReversedZBuffer)
